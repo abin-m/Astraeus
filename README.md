@@ -1,78 +1,95 @@
 # Project Astraeus: Automated Two-Tier Infrastructure
 
-Project Astraeus is an Infrastructure-as-Code (IaC) framework designed to deploy a distributed web architecture. It automates the provisioning of a high-performance Nginx reverse proxy, a FastAPI application running within an isolated Python environment, and a PostgreSQL database managed via Docker.
+Project Astraeus is an Infrastructure-as-Code (IaC) framework that provisions a distributed web architecture. It automates the deployment of an Nginx reverse proxy, a FastAPI application running in a Python virtual environment, and a PostgreSQL database managed with Docker.
 
 ---
 
-## Use Case: Reproducible Infrastructure
+## 1. Prerequisites & Installation
 
-In a standard manual setup, "Configuration Drift" occurs when manual changes make servers inconsistent over time. Astraeus eliminates this by defining the entire environment as code.
+Before starting, ensure your host machine (macOS / Linux / Windows) has the following installed:
 
-**Key Use Cases:**
-* **Rapid Scaling:** Deploy identical application stacks to multiple geographic regions by updating the inventory list.
-* **Environment Parity:** Ensure that local development (Vagrant), staging, and production environments are identical, reducing "it works on my machine" bugs.
-* **Disaster Recovery:** If a server becomes corrupted, the entire stack can be destroyed and reprovisioned in minutes using the playbook.
-
-
-
----
-
-## Core Concepts
-
-### 1. Modular Roles
-The project uses **Ansible Roles** to separate concerns. Each role (`common`, `web`, `db`, `nginx`) is independent.
-* **Concept:** Modularization allows teams to update the database engine (DB Role) without risking changes to the routing logic (Nginx Role).
-
-### 2. Idempotency
-Astraeus is built on the principle of idempotency. Running the playbook multiple times will not result in multiple installations. Ansible checks the current state against the desired state and only executes changes if necessary.
-* **Example:** If Nginx is already installed and running, Ansible reports `ok` and moves to the next task without interrupting the service.
-
-### 3. Service Discovery via Templating
-The Web tier and Database tier are decoupled. The Web application does not have a hardcoded IP address. Instead, it "discovers" the database location during deployment.
-* **Concept:** Using Jinja2 templates (`main.py.j2`), Ansible injects the database's private IP address into the application code at runtime.
+- Vagrant (VM lifecycle)
+- VirtualBox (hypervisor)
+- Ansible (automation)
+    ```bash
+    # macOS (Homebrew)
+    brew install ansible
+    ```
+- Python 3 (for local Ansible execution)
 
 
 
----
+## 2. Initial Environment Setup
 
-## How to Update and Tweak
+### Step 1 — Initialize Virtual Machines
+From the project root, start the Vagrant nodes (`web` and `db`):
+```bash
+vagrant up
+```
 
-### Modifying Application Logic
-To update the FastAPI code or add new endpoints:
-1. Navigate to `roles/web/templates/main.py.j2`.
-2. Add the Python code.
-3. The `notify: restart astraeus` handler ensures the service reloads only when the file is updated.
+### Step 2 — Secret Management (Ansible Vault)
+Create an encrypted DB password and add it to your secrets file:
+```bash
+ansible-vault encrypt_string 'your_db_password' --name 'db_password'
+```
+Paste the resulting encrypted string into `inventories/staging/group_vars/all/secrets.yml`.
 
-### Changing System Dependencies
-To add system-level packages (e.g., `curl`, `htop`, or `git`):
-1. Open `roles/common/tasks/main.yml`.
-2. Add the package name to the `apt` task list.
-3. This ensures the dependency is present on every server in the cluster.
-
-### Tuning Nginx Performance
-To adjust the reverse proxy settings (e.g., adding a client request body limit):
-1. Modify `roles/nginx/templates/astraeus.conf.j2`.
-2. Run the playbook. Ansible will update the configuration and trigger a graceful Nginx restart.
-
----
-
-## Project Structure Summary
-
-| Component | Responsibility | Technical Implementation |
-| :--- | :--- | :--- |
-| **Common Role** | Security & Base Config | UFW Firewall, SSH hardening, system updates. |
-| **Web Role** | Application Layer | Python venv, FastAPI, Systemd unit files. |
-| **DB Role** | Data Layer | Docker Engine, PostgreSQL container, Data Volumes. |
-| **Nginx Role** | Edge/Routing Layer | Reverse Proxying port 80 to 8000. |
-| **Group Vars** | Secrets Management | Ansible Vault encrypted variables. |
+### Step 3 — Configure SSH Access
+Ensure your `inventories/staging/hosts` uses relative paths to Vagrant private keys. Example variables:
+```ini
+[all:vars]
+ansible_user=vagrant
+ansible_ssh_private_key_file={{ inventory_dir }}/../../.vagrant/machines/{{ vagrant_folder }}/virtualbox/private_key
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+```
 
 
+## 3. Deployment & Provisioning
 
----
-
-## Deployment Commands
-
-### Standard Deployment
-To deploy the entire infrastructure:
+Run the full playbook (Common, DB/Docker, FastAPI, Nginx):
 ```bash
 ansible-playbook -i inventories/staging/hosts site.yml --ask-vault-pass
+```
+
+Targeted deploy (only web role):
+```bash
+ansible-playbook -i inventories/staging/hosts site.yml --tags web --ask-vault-pass
+```
+
+
+## 4. Core Architecture Concepts
+
+- Modular Roles: `common`, `web`, `db`, and `nginx` separate concerns.
+- Idempotency: Ansible enforces desired state; repeated runs are safe.
+- Service Discovery: Web tier discovers DB IP via Jinja2, e.g.:
+    `host="{{ hostvars['dbserver']['ansible_host'] }}"`
+
+
+## 5. Management Command Reference
+
+| Action | Command |
+| :--- | :--- |
+| Check Connectivity | `ansible all -i inventories/staging/hosts -m ping` |
+| Reboot All Hosts | `ansible all -i inventories/staging/hosts -m reboot --become` |
+| Check Uptime | `ansible all -i inventories/staging/hosts -a "uptime"` |
+| View Secrets | `ansible-vault view inventories/staging/group_vars/all/secrets.yml` |
+| Edit Secrets | `ansible-vault edit inventories/staging/group_vars/all/secrets.yml` |
+
+
+
+## 6. Troubleshooting
+
+- SSH Permission Denied: Verify the `.vagrant` private key path and set permissions to `600`.
+    ```bash
+    chmod 600 .vagrant/machines/<vm>/virtualbox/private_key
+    ```
+- Database Authentication Failed: If the container password and Ansible secret diverge, remove the DB volume and recreate:
+    ```bash
+    vagrant ssh db -c "sudo rm -rf /opt/pgdata/* && sudo docker rm -f postgres_db"
+    ```
+- Nginx 502 Bad Gateway: Indicates the FastAPI app is not responding on port 8000. Check service status:
+    ```bash
+    vagrant ssh web -c "sudo systemctl status astraeus"
+    ```
+
+---

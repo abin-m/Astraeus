@@ -18,9 +18,7 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "OK"}    
-@app.post("/api")
-def api_endpoint():
-    return {"message": "API endpoint reached"}  
+
 @app.get("/db-test")
 def test_db():
     try:
