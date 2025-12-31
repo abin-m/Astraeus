@@ -1,1 +1,24 @@
+# Vagrant
+.vagrant/
+
+# Ansible
+*.retry
+*.log
 .vault_pass
+inventory/staging/hosts.ini  # Hide if it contains specific IP addresses you don't want public
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+
+# MacOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
