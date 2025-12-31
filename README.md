@@ -200,7 +200,3 @@ Notes:
 - Run all commands from the project root unless otherwise noted.
 - Use the vault options (--ask-vault-pass or --vault-password-file) consistent with the project configuration.
 ---
-
-Notes:
-* All commands assume execution from the project root and the `staging` inventory.
-* Use `--ask-vault-pass` or `--vault-password-file .vault_pass` consistently based on your vault setup.
