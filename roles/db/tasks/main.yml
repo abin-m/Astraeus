@@ -1,0 +1,14 @@
+- name: Install Docker
+  apt: name=docker.io state=present
+
+- name: Run Postgres Container
+  community.docker.docker_container:
+    name: postgres_db
+    image: postgres:15
+    state: started
+    env:
+      POSTGRES_PASSWORD: "{{ db_password }}"
+    volumes:
+      - /opt/pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"

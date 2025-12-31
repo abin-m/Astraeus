@@ -1,0 +1,32 @@
+---
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Remove default Nginx config
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Create Astraeus Nginx Config
+  copy:
+    dest: /etc/nginx/sites-available/astraeus
+    content: |
+      server {
+          listen 80;
+          location / {
+              proxy_pass http://127.0.0.1:8000;
+          }
+      }
+
+- name: Enable Astraeus site
+  file:
+    src: /etc/nginx/sites-available/astraeus
+    dest: /etc/nginx/sites-enabled/astraeus
+    state: link
+
+- name: Restart Nginx
+  service:
+    name: nginx
+    state: restarted

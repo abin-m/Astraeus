@@ -1,0 +1,14 @@
+- name: Update and install UFW
+  apt: update_cache=yes name=ufw state=present
+
+- name: Allow SSH, HTTP, HTTPS
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+  loop: ['22', '80', '443']
+
+- name: Disable Root Login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: 'PermitRootLogin no'

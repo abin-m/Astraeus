@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn instance to serve Astraeus FastAPI
+After=network.target
+
+[Service]
+User=vagrant
+Group=www-data
+WorkingDirectory=/opt/astraeus
+# IMPORTANT: Point to the venv path
+ExecStart=/opt/astraeus/venv/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

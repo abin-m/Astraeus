@@ -1,0 +1,38 @@
+from fastapi import FastAPI
+import psycopg2
+import os
+
+app = FastAPI()
+
+# Ansible automatically pulls the DB server's IP from your inventory
+DB_HOST = "{{ hostvars['dbserver']['ansible_host'] }}"
+
+@app.get("/")
+def read_root():
+    return {
+        "Status": "Astraeus Online", 
+        "Environment": "VirtualEnv",
+        "Connected_to_DB_IP": DB_HOST
+    }
+
+@app.get("/health")
+def health_check():
+    return {"status": "OK"}    
+@app.post("/api")
+def api_endpoint():
+    return {"message": "API endpoint reached"}  
+@app.get("/db-test")
+def test_db():
+    try:
+        # Testing the actual connection to the Postgres container
+        conn = psycopg2.connect(
+        host=DB_HOST,
+        database="postgres",
+        user="postgres",
+        password="{{ db_password }}", 
+        connect_timeout=3
+     )
+        conn.close()
+        return {"database": "SUCCESS", "message": f"Connected to {DB_HOST}"}
+    except Exception as e:
+        return {"database": "FAILED", "error": str(e)}
