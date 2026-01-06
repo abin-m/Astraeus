@@ -1,202 +1,184 @@
-# Project Astraeus: Automated Two-Tier Infrastructure
+# Astraeus Infrastructure
 
-Project Astraeus is an Infrastructure-as-Code (IaC) framework to deploy a distributed web architecture. It provisions an Nginx reverse proxy, a FastAPI application running in a VirtualEnv, and a PostgreSQL database managed via Docker.
+A two-tier infrastructure deployment using Ansible, Vagrant, and VirtualBox. This project creates a web server running FastAPI behind Nginx and a separate database server with PostgreSQL.
 
----
+## Quick Start
 
-## 1. Prerequisites & Installation
+### Prerequisites
+- Vagrant
+- VirtualBox 
+- Ansible
+- Python 3
 
-Before starting, ensure your host machine (macOS/Linux/Windows) has:
-
-* Vagrant
-* VirtualBox
-* Ansible
-* Python 3
-
-Install Ansible on macOS via Homebrew:
+### Installation
+Install Ansible:
 ```bash
+# macOS
 brew install ansible
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install ansible
+
+# RHEL/CentOS/Fedora
+sudo dnf install ansible
 ```
 
----
-
-## 2. Initial Environment Setup
-
-### Step 1 — Initialize Virtual Machines
-From the project root:
+Install required Ansible collections:
 ```bash
+# Install individually
+ansible-galaxy collection install community.docker
+ansible-galaxy collection install ansible.posix
+
+# Or install from requirements file
+ansible-galaxy collection install -r requirements.yml
+```
+
+### Deployment
+```bash
+# Start VMs
 vagrant up
+
+# Deploy infrastructure
+ansible-playbook -i inventories/staging/hosts site.yml
 ```
 
-### Step 2 — Secret Management (Ansible Vault)
-Encrypt a string:
+## Configuration
+
+### Database Password
+Set the database password in `group_vars/all/secrets.yml`:
+```yaml
+vault_db_password: "your_secure_password"
+```
+
+For production, encrypt this file:
 ```bash
-ansible-vault encrypt_string 'your_db_password' --name 'db_password'
+ansible-vault encrypt group_vars/all/secrets.yml
 ```
-Copy the resulting `!vault` block into `group_vars/all/secrets.yml`.
 
-Optional: save the vault password to a file to avoid prompts:
+## Architecture
+
+**Web Server (192.168.56.10):**
+- Nginx reverse proxy
+- FastAPI application
+- UFW firewall (SSH, HTTP, HTTPS)
+
+**Database Server (192.168.56.11):**
+- PostgreSQL in Docker
+- UFW firewall (SSH, PostgreSQL from web server only)
+
+## Common Commands
+
+### Infrastructure Management
 ```bash
-echo "your_vault_password" > .vault_pass
+# Check status
+vagrant status
+
+# SSH into machines
+vagrant ssh web
+vagrant ssh db
+
+# Run specific roles
+ansible-playbook site.yml --tags web
+ansible-playbook site.yml --tags nginx
+
+# Test connectivity  
+ansible all -i inventories/staging/hosts -m ping
 ```
 
-### Step 3 — Configure SSH Access
-The inventory uses relative paths. Ensure `inventories/staging/hosts` contains:
-```ini
-[all:vars]
-ansible_user = vagrant
-ansible_ssh_private_key_file = "{{ inventory_dir }}/../../.vagrant/machines/{{ vagrant_folder }}/virtualbox/private_key"
-ansible_ssh_common_args = '-o StrictHostKeyChecking=no'
-```
-
----
-
-## 3. Deployment & Provisioning
-
-### Run the full playbook
+### Service Management
 ```bash
-ansible-playbook -i inventories/staging/hosts site.yml --ask-vault-pass
-# Or if using a password file:
-ansible-playbook -i inventories/staging/hosts site.yml --vault-password-file .vault_pass
-```
+# Restart services
+vagrant ssh web -c "sudo systemctl restart astraeus"
+vagrant ssh web -c "sudo systemctl restart nginx"
 
-### Targeted deployments (by tag)
-```bash
-# Update only the FastAPI application
-ansible-playbook -i inventories/staging/hosts site.yml --tags web --ask-vault-pass
-
-# Update only Nginx configurations
-ansible-playbook -i inventories/staging/hosts site.yml --tags nginx --ask-vault-pass
-```
-
----
-
-## 4. Core Architecture Concepts
-
-* Modular roles: common, web, db, nginx — allows independent scaling and maintenance.
-* Idempotency: Ansible enforces a desired state; repeated runs are safe.
-* Service discovery: the Web tier discovers the DB IP via `hostvars`, e.g.
-```jinja
-host="{{ hostvars['dbserver']['ansible_host'] }}"
-```
-
----
-
-## 5. Command Reference
-
-### Ad-hoc administration
-| Action | Command |
-| :--- | :--- |
-| Check connectivity | `ansible all -i inventories/staging/hosts -m ping` |
-| Restart all hosts | `ansible all -i inventories/staging/hosts -m reboot --become` |
-| Gather system info | `ansible all -i inventories/staging/hosts -m setup` |
-| Check disk space | `ansible all -i inventories/staging/hosts -a "df -h"` |
-
-### Vault operations
-| Action | Command |
-| :--- | :--- |
-| Encrypt a file | `ansible-vault encrypt secrets.yml` |
-| View encrypted file | `ansible-vault view group_vars/all/secrets.yml` |
-| Edit encrypted file | `ansible-vault edit group_vars/all/secrets.yml` |
-
----
-
-## 6. Troubleshooting
-
-* SSH Permission Denied: verify the path to the `.vagrant` private key and set permissions:
-```bash
-chmod 600 path/to/private_key
-```
-* Database authentication failed: if the password changed, remove the DB volume and restart the container:
-```bash
-vagrant ssh db -c "sudo rm -rf /opt/pgdata/* && sudo docker rm -f postgres_db"
-```
-* Nginx 502 Bad Gateway: check the FastAPI service and logs:
-```bash
-vagrant ssh web -c "sudo systemctl status astraeus"
+# Check logs
 vagrant ssh web -c "sudo journalctl -u astraeus -f"
 ```
-## 7. Lifecycle Management (Power Operations)
 
-Managing VM state is done with Vagrant. Use these commands to avoid data corruption.
-
-### Shutting down
-- Suspend (save RAM state)
+### VM Lifecycle
 ```bash
+# Stop VMs (saves state)
 vagrant suspend
-```
-- Halt (clean shutdown)
-```bash
+
+# Clean shutdown
 vagrant halt
-```
-- Destroy (remove VM and disks)
-```bash
+
+# Start/resume VMs
+vagrant up
+vagrant resume
+
+# Destroy VMs
 vagrant destroy
 ```
 
-### Starting / resuming
-- Start or recreate VMs
+## Troubleshooting
+
+### Installation Issues
 ```bash
-vagrant up
-```
-- Resume from suspend
-```bash
-vagrant resume
-```
-- Reload (re-provision the VM)
-```bash
-vagrant reload --provision
+# If ansible-galaxy fails, try upgrading pip
+pip3 install --upgrade pip
+
+# Check if collections are installed
+ansible-galaxy collection list | grep -E "(community.docker|ansible.posix)"
+
+# Reinstall collections if needed
+ansible-galaxy collection install --force community.docker ansible.posix
 ```
 
-### Recommended workflow
-- For temporary stop: use vagrant suspend
-- For clean shutdown: use vagrant halt
-- For configuration changes that require provisioning: vagrant reload --provision or vagrant up --provision
-
-### Troubleshooting the astraeus systemd service
-
-1) Verify the service file is present
+### SSH Issues
 ```bash
-vagrant ssh web -c "ls -l /etc/systemd/system/astraeus.service"
+# Fix permissions
+chmod 600 .vagrant/machines/*/virtualbox/private_key
 ```
-- If "No such file": the Ansible task did not place the template.
 
-2) If the file exists, force Systemd to pick it up and start the service
+### Database Problems
 ```bash
+# Reset database
+vagrant ssh db -c "sudo docker rm -f postgres_db"
+vagrant ssh db -c "sudo rm -rf /opt/pgdata/*"
+```
+
+### Service Issues
+```bash
+# Check service status
+vagrant ssh web -c "sudo systemctl status astraeus"
+
+# Reload systemd and restart
 vagrant ssh web -c "sudo systemctl daemon-reload"
-vagrant ssh web -c "sudo systemctl start astraeus"
-vagrant ssh web -c "sudo systemctl status astraeus --no-pager"
+vagrant ssh web -c "sudo systemctl restart astraeus"
 ```
 
-3) Confirm the Ansible systemd task includes daemon_reload
-- Example task (roles/web/tasks/main.yml):
-```yaml
-- name: Start and enable Astraeus service
-    systemd:
-        name: astraeus
-        state: restarted
-        enabled: yes
-        daemon_reload: yes
-```
-
-4) Check the virtualenv Python binary (common cause of failures)
+### Application Testing
 ```bash
-vagrant ssh web -c "ls -l /opt/astraeus/venv/bin/python3"
-```
-- If missing, the virtualenv or pip tasks likely failed.
-
-5) Force a re-run of the playbook to apply a corrected template
-- Edit the template (for example add a comment), then:
-```bash
-ansible-playbook -i inventories/staging/hosts site.yml
-# Or, if using a vault password file:
-ansible-playbook -i inventories/staging/hosts site.yml --vault-password-file .vault_pass
+# Test web application
+curl http://192.168.56.10/
+curl http://192.168.56.10/health
+curl http://192.168.56.10/db-test
 ```
 
-6) If `systemctl status astraeus` shows "Loaded: not-found"
-- Check the service filename and the path used by the Ansible template; correct naming or placement is required.
+## Security Features
 
-Notes:
-- Run all commands from the project root unless otherwise noted.
-- Use the vault options (--ask-vault-pass or --vault-password-file) consistent with the project configuration.
----
+- UFW firewall configured on both servers
+- Database access restricted to web server only
+- Security headers implemented in Nginx
+- Server tokens hidden
+
+## File Structure
+
+```
+Astraeus/
+├── site.yml                 # Main playbook
+├── ansible.cfg             # Ansible configuration
+├── Vagrantfile             # VM definitions
+├── inventories/
+│   └── staging/hosts       # Server inventory
+├── group_vars/
+│   └── all/
+│       ├── vars.yml        # Configuration variables
+│       └── secrets.yml     # Sensitive data
+└── roles/
+    ├── common/             # Shared configurations
+    ├── web/                # Web server setup
+    ├── db/                 # Database setup
+    └── nginx/              # Reverse proxy setup
+```

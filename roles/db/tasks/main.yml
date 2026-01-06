@@ -1,6 +1,37 @@
 - name: Install Docker
   apt: name=docker.io state=present
 
+- name: Install UFW 
+  apt: 
+    name: ufw
+    state: present
+
+- name: Reset UFW to defaults
+  ufw:
+    state: reset
+
+- name: Allow SSH access
+  ufw:
+    rule: allow
+    port: ssh
+
+- name: Allow PostgreSQL access only from web server
+  ufw:
+    rule: allow
+    from_ip: 192.168.56.10
+    port: '5432'
+    proto: tcp
+
+- name: Deny all other access to PostgreSQL port
+  ufw:
+    rule: deny
+    port: '5432'
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: deny
+
 - name: Run Postgres Container
   community.docker.docker_container:
     name: postgres_db
@@ -8,7 +39,9 @@
     state: started
     env:
       POSTGRES_PASSWORD: "{{ db_password }}"
+      POSTGRES_HOST_AUTH_METHOD: "md5"
     volumes:
       - /opt/pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "192.168.56.11:5432:5432"
+    restart_policy: always

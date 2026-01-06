@@ -4,6 +4,41 @@
     name: python3-venv
     state: present
 
+- name: Install UFW (Uncomplicated Firewall)
+  apt: 
+    name: ufw
+    state: present
+
+- name: Reset UFW to defaults
+  ufw:
+    state: reset
+
+- name: Allow SSH access
+  ufw:
+    rule: allow
+    port: ssh
+
+- name: Allow HTTP traffic
+  ufw:
+    rule: allow
+    port: '80'
+
+- name: Allow HTTPS traffic
+  ufw:
+    rule: allow
+    port: '443'
+
+- name: Allow FastAPI application port
+  ufw:
+    rule: allow
+    from_ip: 127.0.0.1
+    port: '8000'
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: deny
+
 - name: Create App Directory
   file:
     path: /opt/astraeus

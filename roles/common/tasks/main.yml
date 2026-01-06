@@ -1,13 +1,44 @@
-- name: Update and install UFW
-  apt: update_cache=yes name=ufw state=present
+- name: Update package cache and install security updates
+  apt:
+    update_cache: yes
+    upgrade: safe
+  register: security_updates
+
+- name: Install/Update critical packages
+  apt:
+    name: 
+      - ufw
+      - openssh-server
+      - openssh-client
+      - fail2ban
+    state: latest
+  notify: restart sshd
+
+- name: Enable UFW with default deny policy
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
 
 - name: Allow SSH, HTTP, HTTPS
   ufw:
     rule: allow
     port: "{{ item }}"
-  loop: ['22', '80', '443']
+    proto: tcp
+  loop:
+    - "22"
+    - "80"
+    - "443"
 
-- name: Disable Root Login
+- name: Allow PostgreSQL from web servers only
+  ufw:
+    rule: allow
+    port: "5432"
+    proto: tcp
+    src: "192.168.56.10"
+  when: inventory_hostname in groups['dbservers']
+
+- name: Disable root login over SSH
   lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^PermitRootLogin'

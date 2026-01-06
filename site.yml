@@ -1,19 +1,109 @@
 ---
+- name: Apply Critical Security Updates
+  hosts: all
+  become: true
+  serial: 1
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Fix VirtualBox Guest Additions issue
+      block:
+        - name: Check if vboxadd postinst script exists
+          stat:
+            path: /etc/kernel/postinst.d/vboxadd
+          register: vboxadd_script
+
+        - name: Remove problematic VirtualBox postinst script
+          file:
+            path: /etc/kernel/postinst.d/vboxadd
+            state: absent
+          when: vboxadd_script.stat.exists
+
+        - name: Fix any broken dpkg packages
+          shell: dpkg --configure -a
+          ignore_errors: true
+          
+    - name: Upgrade OpenSSH to fix CVE-2024-6387
+      apt:
+        name: 
+          - openssh-server
+          - openssh-client
+        state: latest
+      notify: restart sshd
+      
+    - name: Apply all pending security updates
+      apt:
+        upgrade: safe
+      register: system_updates
+      
+    - name: Show update results
+      debug:
+        msg: "Updates applied: {{ system_updates.changed }}"
+        
+  handlers:
+    - name: restart sshd
+      service:
+        name: ssh
+        state: restarted
+
 - name: Apply common configurations to all nodes
   hosts: all
   become: true
   roles:
     - common
 
-- name: Setup Database Server
+- name: Setup Database Server with Security Hardening
   hosts: dbservers
   become: true
   roles:
     - db
 
-- name: Setup Web Server and Reverse Proxy
+- name: Setup Web Server with Security Hardening
   hosts: webservers
   become: true
   roles:
     - web
     - nginx
+    - nginx
+
+- name: Harden Network Security
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure UFW is enabled with deny default
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+        
+    - name: Allow SSH access
+      ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        
+    - name: Allow HTTP for web servers
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      when: inventory_hostname in groups['webservers']
+      
+    - name: Restrict PostgreSQL to web server only
+      ufw:
+        rule: allow
+        port: "5432"
+        proto: tcp
+        src: "192.168.56.10"
+      when: inventory_hostname in groups['dbservers']
+      
+    - name: Display UFW status
+      shell: ufw status numbered
+      register: ufw_status
+      
+    - name: Show firewall rules
+      debug:
+        msg: "{{ ufw_status.stdout_lines }}"

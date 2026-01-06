@@ -11,6 +11,6 @@ Vagrant.configure("2") do |config|
     # Database Server
     config.vm.define "db" do |db|
       db.vm.network "private_network", ip: "192.168.56.11"
-      db.vm.hostname = "dbserver" # FIXED: Changed 'web' to 'db'
+      db.vm.hostname = "dbserver" 
     end
   end

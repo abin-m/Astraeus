@@ -1,0 +1,15 @@
+---
+# Database configuration
+db_name: "astraeus_db"
+db_user: "astraeus_user"
+db_host: "192.168.56.11"
+db_port: "5432"
+db_password: "{{ vault_db_password }}"
+
+# Web server configuration
+web_server_ip: "192.168.56.10"
+app_port: "8000"
+
+# Security configuration
+enable_firewall: true
+allowed_ssh_users: ["vagrant", "ubuntu"]

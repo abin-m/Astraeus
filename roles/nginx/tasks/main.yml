@@ -1,7 +1,9 @@
 ---
-- name: Install Nginx
+- name: Install Nginx and headers-more module
   apt:
-    name: nginx
+    name: 
+      - nginx
+      - libnginx-mod-http-headers-more-filter
     state: present
 
 - name: Remove default Nginx config
@@ -9,24 +11,44 @@
     path: /etc/nginx/sites-enabled/default
     state: absent
 
+- name: Secure main nginx configuration
+  blockinfile:
+    path: /etc/nginx/nginx.conf
+    marker: "# {mark} ANSIBLE MANAGED SECURITY BLOCK"
+    insertafter: "http {"
+    block: |
+      server_tokens off;
+      limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+      limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
+      more_clear_headers Server;
+  notify: reload nginx
+
+- name: Update SSL configuration to be more secure
+  replace:
+    path: /etc/nginx/nginx.conf
+    regexp: 'ssl_protocols TLSv1 TLSv1\.1 TLSv1\.2 TLSv1\.3;'
+    replace: 'ssl_protocols TLSv1.2 TLSv1.3;'
+  notify: reload nginx
+
 - name: Create Astraeus Nginx Config
-  copy:
+  template:
+    src: astraeus.conf.j2
     dest: /etc/nginx/sites-available/astraeus
-    content: |
-      server {
-          listen 80;
-          location / {
-              proxy_pass http://127.0.0.1:8000;
-          }
-      }
+    backup: yes
+  notify: reload nginx
 
 - name: Enable Astraeus site
   file:
     src: /etc/nginx/sites-available/astraeus
     dest: /etc/nginx/sites-enabled/astraeus
     state: link
+  notify: reload nginx
 
-- name: Restart Nginx
-  service:
-    name: nginx
-    state: restarted
+- name: Test Nginx configuration
+  command: nginx -t
+  register: nginx_test_result
+  changed_when: false
+
+- name: Display nginx test results
+  debug:
+    var: nginx_test_result.stdout_lines
